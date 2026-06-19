@@ -1,0 +1,19 @@
+{
+  "_comment": "Yang.skills SessionStart hook. Auto-renders 4-6 line status report at every new conversation. Synchronous so the report appears in Claude's context BEFORE first reply. Silently exits if not in a Yang.skills project (no .yang-state.json found).",
+  "_author": "作者: 阿洋",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PROJECT_DIR}/.yang-hooks/session-start.sh",
+            "timeout": 5,
+            "async": false
+          }
+        ]
+      }
+    ]
+  }
+}

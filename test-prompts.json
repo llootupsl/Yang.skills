@@ -1,0 +1,294 @@
+{
+  "_author": "作者: 阿洋",
+  "_comment": "Yang.skills 测试提示词集——覆盖 15 个核心子 skill + 5 个边界场景",
+  "prompts": [
+  {
+    "id": "TP-001",
+    "skill": "yang-init",
+    "prompt": "初始化",
+    "input_context": "用户首次使用 Yang.skills，项目目录为空，Python 3.12 已安装，处于虚拟环境中",
+    "expected_behavior": "系统应执行完整初始化流程：检测 Python 版本、安装依赖、创建项目目录结构（scripts/predictions/videos/samples/）、生成 .yang-state.json（schema_version=v2.1）、rubric_notes.md、WORKFLOW.md、STATUS.md、candidates.md、benchmark.md、初始化 project_data.db、安装 hooks、询问用户平台/垂直领域/粉丝数、引导建立创作人设",
+    "pass_criteria": "1) .yang-state.json 存在且 schema_version=v2.1；2) scripts/predictions/videos/samples 目录均已创建；3) rubric_notes.md/WORKFLOW.md/STATUS.md/candidates.md/benchmark.md 均存在且非空；4) 模板变量 $$PLATFORM$$ 等已替换为实际值，无残留占位符；5) 输出初始化完成摘要含平台/垂直领域/粉丝数",
+    "fail_criteria": "1) 静默覆盖已有 .yang-state.json 而未警告；2) 模板变量未替换直接写入文件；3) 跳过 Python 版本检测；4) 未在虚拟环境中时静默安装到系统 Python；5) project_data.db 初始化失败后未告知用户"
+  },
+  {
+    "id": "TP-002",
+    "skill": "yang-score",
+    "prompt": "打分这篇 scripts/my-draft.md",
+    "input_context": "项目已初始化，rubric_notes.md 存在，scripts/my-draft.md 为一篇约 3000 字的短视频口播脚本",
+    "expected_behavior": "系统应读取脚本全文和 rubric_notes.md，通过 Channel B（3-Judge 内化评分）对 7 维度（钩子力/情绪力/结构力/文案力/人设力/传播力/节奏力）打分，输出评分表+agreement_score+改进建议，并将评分块追加到稿件尾部",
+    "pass_criteria": "1) 输出包含 7 维度评分表，每维度 1-5 分且有加权分；2) agreement_score 已计算（0-1 范围）；3) 改进建议针对得分最低的 2 维；4) 评分块已追加到稿件尾部（### 📊 Yang.skills 评分）；5) 未修改 rubric_notes.md",
+    "fail_criteria": "1) 绕过 Channel B 直接凭感觉打分；2) 评分块覆盖了历史评分记录；3) agreement_score < 0.5 时未附加警告；4) rubric_notes.md 缺失时未拒绝执行；5) 稿件 < 50 字符时仍执行评分"
+  },
+  {
+    "id": "TP-003",
+    "skill": "yang-predict",
+    "prompt": "启动预测 scripts/my-draft.md",
+    "input_context": "脚本已通过 yang-score 评分（composite 7.2），last_score_file 非空，用户确认为最终稿",
+    "expected_behavior": "系统应先展示盲预测协议并要求用户确认(y)，然后基于 rubric 维度得分和 benchmark 数据生成播放量/点赞率/评论率/分享率/完播率/涨粉预估的预测值+置信区间+置信度，写入 immutable 预测日志文件 predictions/YYYY-MM-DD_<id>_<short>.md",
+    "pass_criteria": "1) 用户确认盲预测协议后才继续；2) 预测文件含稿件内容 hash + 时间戳 + rubric 版本号 + 对标快照 + 预测表 + 理由；3) 每个预测值有 rubric 维度得分或 benchmark 数据锚定；4) calibration_samples < 5 时标注[低置信度]；5) .yang-state.json 中 total_predictions 和 pending_retros 已递增",
+    "fail_criteria": "1) 跳过盲预测协议确认直接生成预测；2) 预测值无锚定依据凭直觉出数；3) 用户已透露实际数据后仍继续盲预测；4) 预测文件写入后允许修改 ## 预测 段；5) last_score_file 为 null 时未拒绝执行"
+  },
+  {
+    "id": "TP-004",
+    "skill": "yang-polish",
+    "prompt": "润色 scripts/my-draft.md",
+    "input_context": "脚本已通过 yang-score 诊断（钩子力 3、情绪力 2、文案力 4），.yang-persona.md 存在（饱和度 72%），persona_mode 为 loaded",
+    "expected_behavior": "系统应加载诊断报告和人设档案，判定润色强度（标准润色 L1+L2+L3），执行四层自检（L1 硬性规则→L2 风格一致性→L3 内容质量→L4 活人感终审），输出润色后脚本和润色记录段",
+    "pass_criteria": "1) 润色强度判定与诊断报告低分维度匹配；2) L1 禁用词/标点/套话扫描零命中；3) 润色记录段含改动清单（每项标注依据）；4) 未编造用户没有的经历；5) 未改变原文核心观点和态度；6) 四层自检报告完整输出",
+    "fail_criteria": "1) 跳过 L1 直接做 L4；2) 编造用户未提及的个人经历；3) 改变原文核心观点；4) L1-2 清除的冒号/破折号/双引号在后续步骤中重新引入；5) 无 .yang-persona.md 时未引导建立或标注 generic 模式"
+  },
+  {
+    "id": "TP-005",
+    "skill": "yang-retro",
+    "prompt": "复盘 predictions/2026-06-10_abc123_my-video.md",
+    "input_context": "视频已发布 5 天（T+5），last_publish_file 非空，用户提供了实际数据：播放 8500、点赞 340、评论 87、分享 45",
+    "expected_behavior": "系统应定位预测文件，获取实际数据，生成预测 vs 实际对比表，对超出置信区间的指标做三类归因分析（模型缺失/外部因素/执行偏差），提取观察写入 rubric_notes.md，追加复盘段到预测文件",
+    "pass_criteria": "1) 对比表含所有可获取指标（播放/点赞率/评论率/分享率等）；2) 偏差 > 15% 的指标有三类归因分析；3) 观察写入 rubric_notes.md 的 ## 观察（待验证）区域；4) 复盘段追加到 ## 复盘（未修改 ## 预测 段）；5) 本轮得分包含量化的预测准确度评分（X/10）",
+    "fail_criteria": "1) 修改了 ## 预测 段内容；2) 只展示偏差小的指标而隐藏偏差大的；3) 大偏差（>30%）无明确归因；4) 虚构实际数据；5) 单次复盘观察直接升级为 rubric 维度"
+  },
+  {
+    "id": "TP-006",
+    "skill": "yang-bump",
+    "prompt": "升级 rubric",
+    "input_context": "calibration_samples = 15，rubric_notes.md 中有 3 条待验证观察，当前 rubric 版本 v2.0",
+    "expected_behavior": "系统应检查校准池样本数≥10，读取待验证观察，制定新公式/权重调整，对校准池全部样本执行 full re-score，验证新排名与实际表现一致率≥70%（10<N≤30），通过后升级 rubric 版本号并删除已吸收观察",
+    "pass_criteria": "1) 校准池所有样本已重打（非部分）；2) 验证结果明确通过/不通过（二元判定）；3) 一致率≥70%；4) 版本号已递增；5) 已吸收观察已从 rubric_notes.md 删除；6) .yang-state.json 中 rubric_bumps 已递增",
+    "fail_criteria": "1) 跳过全量重打只对部分样本重打；2) 无待验证观察时凭空新增维度；3) 验证不通过时仍删除观察；4) 单样本驱动权重调整；5) 争议维度（极差>2）未标记"
+  },
+  {
+    "id": "TP-007",
+    "skill": "yang-seed",
+    "prompt": "找选题",
+    "input_context": "项目已初始化，rubric_notes.md 存在，竞品数据库有 3 个活跃竞品，adapters/trend-sources 可用，有近期爆款视频评论数据",
+    "expected_behavior": "系统应运行四通道选题流程：Channel A（Rubric逆推）→ Channel B（竞品数据库驱动）→ Channel C（热点冲浪）→ Channel D（高赞评论金句），汇总去重后写入 candidates.md 并分级（A/B/C）",
+    "pass_criteria": "1) 至少 2 个通道产出了有效选题；2) 选题已去重（标题相似度>80%视为重复）；3) 每个选题标注来源通道；4) candidates.md 已更新；5) 推荐语含 Top 4 选题及来源标注",
+    "fail_criteria": "1) 无任何数据来源支撑凭空生成选题；2) stale 数据未标注时效直接作为当下选题信号；3) 四通道全部降级后仍输出推荐；4) 热点与垂直领域无关但硬蹭；5) 水军评论入池"
+  },
+  {
+    "id": "TP-008",
+    "skill": "yang-trends",
+    "prompt": "抓热点",
+    "input_context": "项目已初始化，adapters/trend-sources/fetch_trends.py 存在且可执行，用户垂直领域为 AI/科技",
+    "expected_behavior": "系统应运行多源聚合器抓取公开热榜，筛出与 AI/科技相关的热点，标注时效窗口（🔴🟠🟢⚪），生成切入角度，写入 candidates.md 的热点选题区",
+    "pass_criteria": "1) 热点数据来自实际抓取（非编造）；2) 相关性评分<0.3的热点未写入 candidates.md；3) 每条热点标注时效窗口；4) 单源失败已标注但未阻塞其他源；5) candidates.md 已更新",
+    "fail_criteria": "1) 用超过 24 小时的缓存冒充实时热点；2) 相关性评分<0.3的热点仍推荐；3) 伪造 hotness/rank 数据；4) 跳过时效锁标注；5) 重复写入相同热点"
+  },
+  {
+    "id": "TP-009",
+    "skill": "yang-hook-factory",
+    "prompt": "生成钩子 scripts/my-draft.md",
+    "input_context": "脚本存在且前 30 秒非空，rubric_notes.md 存在，.yang-persona.md 存在",
+    "expected_behavior": "系统应读取脚本前 30 秒内容，生成 7 种钩子变体（反常识/经历/悬念/情绪/痛点/权威/故事），每种含具体文案填充，用 rubric 钩子维度评分，推荐首推钩子并给出 A/B 测试建议",
+    "pass_criteria": "1) 7 种基础钩子变体全部生成，无遗漏类型；2) 每种钩子含具体内容填充（非模板占位符）；3) 钩子文案控制在 30-50 字内（3 秒口播时长）；4) 评分基于 rubric 实际计算；5) 输出含 A/B 测试配对建议",
+    "fail_criteria": "1) 输出未填充的模板占位符；2) 钩子风格与人设严重矛盾；3) 钩子文案超过前 3 秒范围变成完整段落；4) 伪造评分数据预设排序；5) 知识库A降级时未标注降级范围"
+  },
+  {
+    "id": "TP-010",
+    "skill": "yang-emotion-curve",
+    "prompt": "情绪曲线 scripts/my-draft.md",
+    "input_context": "脚本约 2000 字，包含开头钩子、中间论述和结尾升华段落",
+    "expected_behavior": "系统应将脚本按时序切分为 10 段，对每段标注情绪值（-3 到 +3），绘制 ASCII ER-Curve，计算 5 项节奏指标（情绪密度/动态范围/开头强度/峰值位置/结尾收束），输出健康度评分和优化建议",
+    "pass_criteria": "1) 分段结果≥5 段；2) ER-Curve 含各段情绪类型标注；3) 5 项节奏指标全部计算完成；4) 健康度评分为量化数值（0-100）；5) 优化建议含至少 1 条可执行修改方案",
+    "fail_criteria": "1) 预设曲线形状再填值；2) 忽略中性段落人为调高；3) 只输出数值曲线无情绪类型标注；4) 跳过节奏分析直接给建议；5) 知识库A降级时未标注"
+  },
+  {
+    "id": "TP-011",
+    "skill": "yang-persona",
+    "prompt": "建人设",
+    "input_context": "项目已初始化（.yang-state.json 存在），.yang-persona.md 不存在",
+    "expected_behavior": "系统应进入新建模式，逐项引导用户填写 5 项必填（身份/核心价值观/故事/口癖/情绪表达）和 7 项选填，检查故事清晰度（场景/情绪/转折），生成 .yang-persona.md 并更新 .yang-state.json",
+    "pass_criteria": "1) 5 项必填全部收集（缺一则追问）；2) 故事清晰度不足时触发追问（最多 2 轮）；3) .yang-persona.md 含 YAML frontmatter（created_at/updated_at/version）；4) .yang-state.json 中 persona_exists=true；5) 输出饱和度评分",
+    "fail_criteria": "1) 项目未 init 时未拒绝执行；2) 跳过必填项直接生成档案；3) 将 AI 生成内容伪装为用户真实人设；4) 故事清晰度不足时标注为完成；5) 选填项标为必填强制要求"
+  },
+  {
+    "id": "TP-012",
+    "skill": "yang-recommend",
+    "prompt": "推荐选题",
+    "input_context": "candidates.md 存在且含 8 条已打分候选（3 条 tier1、3 条 tier2、2 条 tier3），predictions/ 有 5 条已发布记录，buffer 颜色为 🟢 绿",
+    "expected_behavior": "系统应解析 candidates.md，过滤已发布/已拒绝/未打分条目，按 composite 排序，选出 1 稳分 + 1 实验性，每条带维度评分+锚点对比+rationale，输出 top 5 推荐",
+    "pass_criteria": "1) 已发布条目已从推荐中排除；2) 推荐含 1 稳分 + 1 实验性；3) 每条推荐含维度评分+锚点+rationale（非仅 composite 排序）；4) buffer 🟢 时使用标准策略；5) 推荐多样性指数（RDI）已计算",
+    "fail_criteria": "1) 推荐未打分的候选；2) 只输出 composite 排序无解释；3) candidates.md 缺失时报错而非给引导；4) buffer 🔴 时推荐实验性候选；5) 静默忽略格式异常的候选"
+  },
+  {
+    "id": "TP-013",
+    "skill": "yang-publish",
+    "prompt": "已发布 predictions/2026-06-10_abc123_my-video.md --url https://v.douyin.com/xxx --time 2026-06-10T20:00+08:00",
+    "input_context": "预测文件存在且含完整预测段，last_shoot_file 非空，buffer_available = 3",
+    "expected_behavior": "系统应执行发布前自检（10 项），收集发布信息（时间/平台/链接），在预测文件中追加 ## 发布信息 段，设置 T+3 复盘提醒，更新 .yang-state.json（shoots 队列移除、buffer -1）",
+    "pass_criteria": "1) 发布前自检 10 项逐项确认；2) ## 发布信息 段已追加（非修改 ## 预测 段）；3) T+3 复盘提醒已设置；4) buffer 计数已正确刷新；5) 输出含发布确认+复盘建议时间",
+    "fail_criteria": "1) 无预测文件时仍登记发布；2) 重复写入发布信息段；3) 修改了 ## 预测 段内容；4) 跳过复盘提醒设置；5) buffer 计数异常时静默继续"
+  },
+  {
+    "id": "TP-014",
+    "skill": "yang-competitor-search",
+    "prompt": "发现竞品 AI绘画",
+    "input_context": "项目已初始化，adapters/competitor-search/search.py 和 adapters/competitor-data/collector.py 存在，project_data.db 已初始化",
+    "expected_behavior": "系统应确认搜索关键词和平台范围，执行多平台搜索，采集竞品基础数据，写入 project_data.db 的 competitors 和 competitor_snapshots 表，输出竞品清单表格",
+    "pass_criteria": "1) 搜索结果已写入 project_data.db（非仅临时文件）；2) 单平台失败未阻塞其他平台；3) 采集失败的竞品标注'数据不完整'；4) 临时文件 .temp_* 已清理；5) 输出含竞品清单表格（账号名/平台/粉丝数/简介）",
+    "fail_criteria": "1) 仅输出 JSON 不入库；2) 单平台失败终止全局；3) 跳过采集直接入库导致数据不完整；4) 静默丢弃采集失败的竞品；5) 残留临时文件未清理"
+  },
+  {
+    "id": "TP-015",
+    "skill": "yang-graphic",
+    "prompt": "小红书图文 --platform xhs --topic 如何用AI提升工作效率",
+    "input_context": "项目已初始化，.yang-persona.md 存在，adapters/graphic-suite/render_card.py 存在，Playwright chromium 可用",
+    "expected_behavior": "系统应确定平台为小红书，按选题情绪选择主题（干货→mono），生成封面标题（人群印记+钩子）和 3-6 张内容卡要点，渲染为 PNG 图卡，执行图文产出质量自检",
+    "pass_criteria": "1) 封面标题≤22字且含人群印记；2) 钩子命中率≥80%；3) 内容卡一卡一要点；4) 配色与情绪匹配；5) 产出 PNG 文件非空；6) 自检清单 10 项通过",
+    "fail_criteria": "1) 封面标题超过 22 字；2) 跳过知识库驱动凭感觉配色；3) 正文超长未自动分页；4) 忽略人群印记用泛泛标题；5) 渲染失败时返回空结果而非降级输出 HTML"
+  },
+  {
+    "id": "TP-016",
+    "skill": "yang-init",
+    "prompt": "初始化",
+    "input_context": ".yang-state.json 已存在（项目已初始化过），用户在已有项目目录下再次运行初始化",
+    "expected_behavior": "系统应检测到 .yang-state.json 已存在，警告用户'项目已初始化，重复初始化可能覆盖现有配置'，询问用户是否继续（覆盖/合并/换目录），不得静默覆盖",
+    "pass_criteria": "1) 检测到已有 .yang-state.json 并输出警告；2) 询问用户选择（覆盖/合并/换目录）；3) 用户未确认前不执行任何覆盖操作；4) 选择合并时保留现有 scripts/predictions 目录内容",
+    "fail_criteria": "1) 静默覆盖已有 .yang-state.json；2) 未警告直接执行初始化；3) 覆盖时删除了已有脚本或预测文件；4) 不提供合并选项"
+  },
+  {
+    "id": "TP-017",
+    "skill": "yang-predict",
+    "prompt": "预测这条，播放大概 5 万吧",
+    "input_context": "用户在请求预测时同时透露了预期播放量数据",
+    "expected_behavior": "系统应检测到用户已透露实际/预期数据，触发 PREDICT_NOT_BLIND，拒绝执行盲预测，提示必须在不知道实际数据的情况下完成预测",
+    "pass_criteria": "1) 检测到数据泄露并拒绝继续；2) 明确告知用户违反盲预测原则；3) 不生成任何预测文件；4) 提示用户重新以盲预测方式请求",
+    "fail_criteria": "1) 忽略数据泄露继续生成预测；2) 生成的预测值明显受用户透露数据影响；3) 未告知用户违反了盲预测原则"
+  },
+  {
+    "id": "TP-018",
+    "skill": "yang-polish",
+    "prompt": "润色 scripts/ai-article.md",
+    "input_context": "脚本内容充满 AI 味：大量使用'首先...其次...最后'、冒号、破折号、双引号、'说白了''意味着'等禁用词，.yang-persona.md 不存在",
+    "expected_behavior": "系统应引导用户建立人设或选择 generic 模式，执行 L1 硬性规则检查时扫描出所有禁用词/标点/套话并逐一替换，L2 确认替换后未重新引入，最终输出零 AI 味的润色稿",
+    "pass_criteria": "1) L1 禁用词扫描命中项全部修复至零命中；2) L1 禁用标点（冒号/破折号/双引号）全部替换；3) L2 标点禁令二次确认通过（AI 易在改写中重新引入）；4) 无 .yang-persona.md 时标注 persona_mode: generic；5) 润色记录段含完整改动清单",
+    "fail_criteria": "1) 跳过 L1 直接做 L4；2) L1 清除的冒号/破折号/双引号在 L2-L4 中重新引入；3) 未引导建立人设也未标注 generic 模式；4) 禁用词仍有残留"
+  },
+  {
+    "id": "TP-019",
+    "skill": "yang-bump",
+    "prompt": "升级 rubric",
+    "input_context": "calibration_samples = 7，低于 MIN_SAMPLES_FOR_BUMP（10）",
+    "expected_behavior": "系统应检测到校准样本不足，拒绝执行 bump，提示用户当前样本数和所需阈值，建议先积累更多 retro",
+    "pass_criteria": "1) 拒绝执行 bump；2) 明确告知当前样本数（7）和所需阈值（10）；3) 建议用户先运行更多 yang-retro 积累校准样本；4) 未修改 rubric_notes.md",
+    "fail_criteria": "1) 样本不足仍执行 bump；2) 未告知用户样本不足的原因；3) 修改了 rubric_notes.md"
+  },
+  {
+    "id": "TP-020",
+    "skill": "yang-recommend",
+    "prompt": "推荐选题",
+    "input_context": "candidates.md 不存在，用户尚未建立候选池",
+    "expected_behavior": "系统应检测到 candidates.md 缺失，不报错，输出引导信息：提供 4 种建立候选池的方式（yang-seed/yang-trends/手动建/从外部导入），退出而不继续后续 phase",
+    "pass_criteria": "1) 不报错退出；2) 输出含 4 种建立候选池方式的引导；3) 未继续执行推荐排序流程；4) 引导中含 yang-seed 和 yang-trends 的触发词说明",
+    "fail_criteria": "1) 候选池缺失时报错退出；2) 继续执行推荐排序输出空结果；3) 未提供任何建立候选池的引导"
+  },
+  {
+    "id": "TP-021",
+    "skill": "yang-seed",
+    "prompt": "帮我找一些搜索量高但竞争低的选题",
+    "input_context": "项目已init，rubric_notes.md存在，adapters/search-intent/可用",
+    "expected_behavior": "触发Channel E搜索意图选题，调用search_intent.py拉取6种信号，输出带搜索量/关注数验证的选题",
+    "pass_criteria": "输出包含Channel E来源的选题，每条有_signal_type和验证数据",
+    "fail_criteria": "只输出热榜选题无搜索意图信号，或Channel E选题无验证数据"
+  },
+  {
+    "id": "TP-022",
+    "skill": "yang-trends",
+    "prompt": "搜一下'考研'相关的搜索意图",
+    "input_context": "项目已init，adapters/search-intent/可用",
+    "expected_behavior": "调用search_intent.py --keyword '考研'，返回搜索建议+相关搜索+问题型需求",
+    "pass_criteria": "返回至少3种搜索意图信号类型，每条有_signal_type字段",
+    "fail_criteria": "只返回热榜数据无搜索意图信号"
+  },
+  {
+    "id": "TP-023",
+    "skill": "yang-seed",
+    "prompt": "找选题，我赛道是'职场沟通'",
+    "input_context": "项目已init，rubric_notes.md中有'职场沟通'相关维度",
+    "expected_behavior": "五通道选题，Channel E用'职场沟通'作为种子词搜索意图",
+    "pass_criteria": "Channel E输出职场沟通相关的搜索意图选题，种子词从rubric提取",
+    "fail_criteria": "Channel E未触发，或种子词过于宽泛（如只用'职场'）"
+  },
+  {
+    "id": "TP-024",
+    "skill": "yang-polish",
+    "prompt": "润色这段脚本，告诉我活人感评分变化",
+    "input_context": "项目已init，persona.md存在，一段AI味重的脚本已提供",
+    "expected_behavior": "执行润色+Humanness Score评分，输出Before/After量化变化",
+    "pass_criteria": "输出6维度评分变化+总分变化+每维度具体改进说明",
+    "fail_criteria": "只输出润色结果无量化评分，或评分维度不完整"
+  },
+  {
+    "id": "TP-025",
+    "skill": "yang-polish",
+    "prompt": "这段文字的活人感评分是多少？",
+    "input_context": "项目已init，一段文本已提供",
+    "expected_behavior": "只评分不润色，输出6维度Humanness Score",
+    "pass_criteria": "输出6维度0-100分+总分+等级判定(🔴🟠🟡🟢🔵)",
+    "fail_criteria": "评分维度不完整，或无等级判定"
+  },
+  {
+    "id": "TP-026",
+    "skill": "yang-seed",
+    "prompt": "找选题，但我没有rubric",
+    "input_context": "项目已init，但rubric_notes.md为空",
+    "expected_behavior": "Channel A降级为B-三有框架，Channel E种子词从用户输入提取而非rubric，输出降级提示",
+    "pass_criteria": "1)输出含SEED_NO_RUBRIC编码；2)Channel A降级说明；3)Channel E仍可工作（种子词从用户输入提取）",
+    "fail_criteria": "1)四通道全部降级报错；2)Channel E因无种子词而跳过"
+  },
+  {
+    "id": "TP-027",
+    "skill": "yang-polish",
+    "prompt": "润色这段脚本，但不要改太多",
+    "input_context": "项目已init，一段Humanness Score=65🟡的脚本",
+    "expected_behavior": "执行轻度润色（只改H-OPEN和H-SPEC两个最低维度），输出量化变化",
+    "pass_criteria": "1)只修改2个维度而非全部6个；2)Humanness Score变化<20分；3)输出说明'轻度润色模式'",
+    "fail_criteria": "1)执行全套润色改得面目全非；2)Humanness Score变化>30分"
+  },
+  {
+    "id": "TP-028",
+    "skill": "yang-trends",
+    "prompt": "抓热点，但网络不可用",
+    "input_context": "项目已init，网络完全断开",
+    "expected_behavior": "fetch_trends.py全部源失败→降级到local_trends.py→从本地文件读取→输出标注'数据非实时'",
+    "pass_criteria": "1)不报错退出；2)从本地文件读取热点数据；3)输出标注'⚠ 数据非实时'",
+    "fail_criteria": "1)直接报错退出；2)输出空结果；3)未标注数据非实时"
+  },
+  {
+    "id": "TP-029",
+    "skill": "yang-seed→yang-score→yang-predict",
+    "prompt": "找选题，然后打分，然后预测",
+    "input_context": "项目已init，rubric存在，完整数据",
+    "expected_behavior": "三skill串联：seed五通道选题→score对选中选题打分→predict盲预测",
+    "pass_criteria": "1)seed输出5个选题；2)用户选1个后score打分；3)predict生成预测文件；4)三个skill间数据正确传递",
+    "fail_criteria": "1)三个skill独立执行无数据传递；2)seed输出直接跳到predict跳过score"
+  },
+  {
+    "id": "TP-030",
+    "skill": "yang-polish→yang-bump",
+    "prompt": "润色10篇稿子后升级rubric",
+    "input_context": "项目已init，10篇已润色稿件有Humanness Score数据",
+    "expected_behavior": "bump时检查Humanness Score校准数据，调整评分权重",
+    "pass_criteria": "1)bump输出含Humanness Score校准结果；2)权重调整幅度≤5%；3)校准样本≥10个",
+    "fail_criteria": "1)bump忽略Humanness Score数据；2)权重调整>10%"
+  },
+  {
+    "id": "TP-031",
+    "skill": "yang-init",
+    "prompt": "初始化，然后告诉我怎么用",
+    "input_context": "首次使用，项目目录为空",
+    "expected_behavior": "init完成后输出渐进式加载指引+首次使用建议",
+    "pass_criteria": "1)输出'→ 首次使用建议：说找选题开始'；2)说明渐进式加载机制；3)不一次性加载所有子skill",
+    "fail_criteria": "1)init后无使用指引；2)一次性加载所有子skill内容"
+  },
+  {
+    "id": "TP-032",
+    "skill": "yang-trends→yang-seed",
+    "prompt": "先抓热点，再找选题",
+    "input_context": "项目已init，网络可用",
+    "expected_behavior": "trends抓热点→seed整合热点+搜索意图生成选题",
+    "pass_criteria": "1)trends输出热点数据；2)seed Channel C使用trends数据；3)seed Channel E补充搜索意图；4)最终选题包含热点+搜索意图双信号",
+    "fail_criteria": "1)trends和seed独立执行无数据传递；2)seed只输出热点选题无搜索意图"
+  }
+  ]
+}

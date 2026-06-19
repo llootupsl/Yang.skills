@@ -1,0 +1,19 @@
+{
+  "_comment": "Yang.skills prediction immutability hook. Blocks edits to '## 预测' / '## Prediction' sections in predictions/*.md files. Merge this into your project's .claude/settings.json on /yang-init.",
+  "_author": "作者: 阿洋",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PROJECT_DIR}/.yang-hooks/prediction-immutability.sh",
+            "timeout": 3,
+            "async": false
+          }
+        ]
+      }
+    ]
+  }
+}

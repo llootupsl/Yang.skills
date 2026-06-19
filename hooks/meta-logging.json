@@ -1,0 +1,58 @@
+{
+  "_comment": "Yang.skills meta-logging hook. Passively records every yang-* skill invocation, tool call, and session lifecycle event to .yang-cache/usage.jsonl. All hooks are async fire-and-forget — never blocks. Used by /yang-status to compute things like 'distance since last bump'.",
+  "_author": "作者: 阿洋",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PROJECT_DIR}/.yang-hooks/log-event.sh tool_use",
+            "timeout": 5,
+            "async": true
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PROJECT_DIR}/.yang-hooks/log-event.sh user_prompt",
+            "timeout": 5,
+            "async": true
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PROJECT_DIR}/.yang-hooks/log-event.sh session_start",
+            "timeout": 5,
+            "async": true
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PROJECT_DIR}/.yang-hooks/log-event.sh session_end",
+            "timeout": 5,
+            "async": true
+          }
+        ]
+      }
+    ]
+  }
+}

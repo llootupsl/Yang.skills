@@ -1,0 +1,27 @@
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*.swn
+.idea/
+.vscode/
+*.bak
+*~
+__pycache__/
+*.pyc
+*.pyo
+
+# Yang.skills 运行时缓存
+.yang-cache/
+.yang-sessions/
+
+# 敏感配置
+.env*
+*.key
+.yang-secrets*
+
+# 依赖目录
+node_modules/
+
+# 数据库文件
+*.db

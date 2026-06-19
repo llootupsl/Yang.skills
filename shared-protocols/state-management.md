@@ -1,0 +1,599 @@
+<!-- 作者: 阿洋 -->
+# State Management（状态文件读写约定）
+
+被所有子 skill 引用。`.yang-state.json` 是各子 skill 共享上下文的**单一来源**——任何运行时状态、累计指标、模式标记都从这里读、写回这里。
+
+---
+
+## 文件位置
+
+```
+<user-content-project>/.yang-state.json
+```
+
+**绝不**放到全局 `~/.claude/` 或 Yang.skills 自己的目录——一个用户可能维护多个内容项目，每个项目独立状态。
+
+---
+
+## 完整 schema
+
+```json
+{
+  "schema_version": "1.4",
+  "skill_version": "1.0.0",
+
+  "rubric_version": "v0",
+  "content_form": "opinion-video",
+  "typical_duration_seconds": 240,
+  "target_publish_cadence_days": 2,
+  "rubric_form_mismatch": false,
+  "benchmark_status": "none",
+  "benchmark_name": null,
+  "benchmark_sample_count": 0,
+  "baseline_plays": null,
+
+  "calibration_samples": 0,
+  "calibration_samples_at_last_bump": 0,
+
+  "data_collection": "manual",
+  "pool_status": "none",
+  "data_layer": "markdown",
+
+  "hooks_installed": false,
+  "enabled_trend_sources": ["manual-paste"],
+  "enabled_perf_adapters": [],
+
+  "last_bump_at": null,
+  "last_bump_self_audited": false,
+  "last_published_at": null,
+  "last_published_file": null,
+  "last_retro_at": null,
+  "last_trends_run_at": null,
+  "last_trends_added_count": 0,
+  "last_prediction_self_scored": false,
+  "last_self_scored_at": null,
+
+  "consecutive_directional_errors": [],
+  "pending_retros": [],
+  "shoots": [],
+
+  "in_progress_session": null,
+
+  "initialized_at": "2026-05-04T15:00:00+08:00"
+}
+```
+
+### 关键变更（v1.4）
+
+相比 v1.3（**MINOR but BREAKING for blind channel integrity**——老用户必须跑 migrate）：
+
+- **rubric 文件拆分**：`rubric_notes.md` → `rubric_notes.md`（公式 + 通用维度定义；blind 白名单）+ `rubric-memo.md`（升级 Memo 含证据 + 派生证据；blind 硬禁读）
+- **state 字段不变**——仅 `schema_version` bump 标识老用户须跑迁移把现有 rubric_notes.md 拆成两份文件
+- 配合 [skills/yang-score-blind/SKILL.md](../skills/yang-score-blind/SKILL.md) 的 `blocked_rubric_memo` refusal_code + yang-bump Phase 5 leak guard 自检
+- **不跑 migrate 的后果**：blind sub-agent 仍会读到 rubric_notes.md 里的实绩，sub-agent 会自报 `non_blind_warning` 并降所有 confidence 到 medium——可用但不再是"真盲"
+- 详见 [migrations/1.3-to-1.4.md](../migrations/1.3-to-1.4.md)
+
+### 关键变更（v1.3）
+
+相比 v1.2（MINOR，兼容）：
+
+- **新增 `last_prediction_self_scored: bool`**——`true` 仅当上一次 `/yang-predict` 走了 `--skip-blind` flag 或 Phase 2.5 用户选 b（信主 Claude 自估）。yang-status / SessionStart hook 据此 nag："上次预测没走 blind sub-agent，已 N 天"
+- **新增 `last_self_scored_at: ISO 8601 / null`**——`last_prediction_self_scored` 触发时的时间戳；走 sub-agent 时一起清回 null
+- 配合 [skills/yang-score-blind](../skills/yang-score-blind/SKILL.md) 的 channel B 隔离协议——把 contamination 跟踪从"靠 git history"升级为"靠 state 字段"
+- 老 state 缺这两字段 → 兜底 `false` / `null`，**MINOR 兼容**
+
+### 关键变更（v1.2）
+
+相比 v1.1（MINOR，兼容）：
+
+- **`shoots[]` 项 schema 扩展**——新增 `scripts_path`、`script_consistency`、`script_diff_pct`、`v2_prediction_written`、`script_hash_at_shoot` 字段。语义见 yang-shoot Phase 4。这些字段记录"拍后改稿是否触发 v2 预测重判"，yang-retro 据此决定读 `## 预测 v1` 还是 `## 预测 v2`
+- 老 state 缺这些字段 → skills 用 `state.get(field, default)` 兜底（`script_consistency` 默认 `"consistent"`，`v2_prediction_written` 默认 `false`，`script_diff_pct` 默认 `null`）。**不强制跑 migrate**——但跑了让 state 字段对齐 schema 文档
+
+### 关键变更（v1.1）
+
+相比 v1.0：
+
+- **删除 `mode`**（"cold-start" / "calibration" 二元）→ 用 `calibration_samples` 整数判断状态
+- **删除 `prediction_complexity`**（"cold-start-simple" / "complete" 二元）→ 所有预测都用统一完整 7 组件结构，**confidence 等级派生自 calibration_samples**
+- **删除 `bucket_scheme`**（"ratio" / "absolute" / "absolute_with_ratio" / "percentile" 四档）→ bucket 边界由单一算法**自动派生**：有 `baseline_plays` → 按倍数；无 → 平台通用默认；样本 ≥10 → 重算 baseline
+
+理由：硬模式切换是设计者的猜测，不是用户体验该有的样子。统一流程 + 渐进信心标注更符合"频道是不断进化的连续光谱，不是离散阶段"的事实。
+
+---
+
+## 字段说明（每个字段的语义 + 谁写谁读）
+
+### 元数据
+
+| 字段 | 类型 | 写入者 | 读取者 | 说明 |
+|---|---|---|---|---|
+| `schema_version` | string | yang-init / yang-migrate | 所有 skill | "1.1"。schema 升级时 bump；老用户由 [/yang-migrate](../skills/yang-migrate/SKILL.md) 升级。详见 [migration-protocol.md](migration-protocol.md) |
+| `skill_version` | string | yang-init | 所有 skill | Yang.skills 当前版本 |
+| `initialized_at` | ISO 8601 | yang-init | yang-status | 首次初始化时间，永不变 |
+
+### 模式与配置
+
+| 字段 | 类型 | 取值 | 写入者 | 读取者 |
+|---|---|---|---|---|
+| `rubric_version` | string | "v0" / "v1" / "v2" / ... | yang-init / yang-bump | yang-score / yang-predict / yang-retro |
+| `content_form` | enum | "opinion-video" / "long-essay" / "short-text" / "podcast" / "other" / "mixed" | yang-init | yang-predict / yang-recommend |
+| `typical_duration_seconds` | int | 用户视频典型时长。决定 yang-seed 写 draft 的字数 + yang-predict 锚点优先同时长 | yang-init | yang-seed / yang-predict |
+| `target_publish_cadence_days` | int / null | 用户目标发布频率（1=日更 / 2=隔日 / 7=周更 / null=灵活）。决定 buffer 警戒颜色阈值 | yang-init | yang-status / yang-recommend / yang-shoot / yang-publish / SessionStart hook |
+| `rubric_form_mismatch` | bool | true 表示 content_form ≠ opinion-video 但仍用 opinion 内置 rubric 起步——提示用户 bump 时调权重 | yang-init | yang-status（持续提示） |
+| `benchmark_status` | enum | "none" / "imported" / "pending"（用户答应等下找）| yang-init / yang-learn-from | yang-seed（brainstorm 时读 benchmark.md）/ yang-status（pending 时持续提醒） |
+| `benchmark_name` | string / null | 对标账号名（如"蜗牛学长留学"）；none 时为 null | yang-learn-from | yang-status / yang-seed |
+| `benchmark_sample_count` | int | 已导入的对标视频条数 | yang-learn-from（写入 / append） | yang-status（N≥10 时提示 benchmark 影响淡出） |
+| `baseline_plays` | int / null | 用户基准播放数；首次 init 时若有抓取历史→中位数；无→null；后续 yang-retro 第 1 篇有实绩时回填 | yang-init / yang-retro / yang-bump (--bucket-only) | yang-predict（派生 bucket 边界） |
+| `data_collection` | enum | "manual" / "adapter" | yang-init | yang-retro（决定 DATA_SOURCE 默认值） |
+| `pool_status` | enum | "none" / "markdown" / "notion" / "sqlite" | yang-init / yang-recommend | yang-recommend / yang-status |
+| `data_layer` | enum | "markdown" / "sqlite" | yang-init / md-to-sqlite.py | 所有读 predictions 的 skill |
+| `hooks_installed` | bool | true / false | yang-init | yang-status（持续提示） |
+| `enabled_trend_sources` | array of string | trend-source adapter 名列表（如 `["weibo-hot", "zhihu-hot"]`） | yang-init / 用户手动 | yang-trends |
+| `enabled_perf_adapters` | array of string | perf-data adapter 名列表（如 `["douyin-session"]`）。空 → yang-retro 走 manual paste | yang-init / 用户手动配置后 | yang-retro |
+
+### 累计计数
+
+| 字段 | 类型 | 写入者 | 用途 |
+|---|---|---|---|
+| `calibration_samples` | int | yang-retro（每次复盘 +1） | yang-status 进度条 / yang-bump 门槛 |
+| `calibration_samples_at_last_bump` | int | yang-bump | "距上次 bump 多少新样本" |
+
+### 时间戳（last_X_at）
+
+| 字段 | 类型 | 写入者 |
+|---|---|---|
+| `last_bump_at` | ISO 8601 / null | yang-bump |
+| `last_bump_self_audited` | bool | yang-bump（CROSS_MODEL_AUDIT=false 时 true） |
+| `last_published_at` | ISO 8601 / null | yang-publish |
+| `last_published_file` | string / null | yang-publish |
+| `last_retro_at` | ISO 8601 / null | yang-retro |
+| `last_trends_run_at` | ISO 8601 / null | yang-trends |
+| `last_trends_added_count` | int | yang-trends |
+| `last_prediction_self_scored` | bool | yang-predict（`--skip-blind` 或 Phase 2.5 选 b 时 true；下次走 sub-agent 时清回 false） |
+| `last_self_scored_at` | ISO 8601 / null | yang-predict（跟随 `last_prediction_self_scored` 同步） |
+
+### 列表队列
+
+| 字段 | 类型 | 写入者 | 读取者 | 协议 |
+|---|---|---|---|---|
+| `consecutive_directional_errors` | array of "high"/"low" | yang-retro（push） / yang-bump（清空） | yang-status / yang-retro 自检 | 最近 N 次复盘的偏差方向；连续 3 同向触发 bump 提议 |
+| `pending_retros` | array of file path | yang-publish（push） / yang-retro（remove） | yang-status | 等待复盘的预测文件路径 |
+| `shoots` | array of {video_folder, prediction_file, shot_at, ad_hoc} | yang-shoot（push） / yang-publish（remove） | yang-status / yang-recommend / SessionStart hook | 已拍未发队列。`len(shoots) = buffer count`，`buffer_days = buffer × target_publish_cadence_days` 决定颜色 |
+
+### 会话状态
+
+| 字段 | 类型 | 写入者 | 读取者 | 协议 |
+|---|---|---|---|---|
+| `in_progress_session` | object / null | yang-predict（创建） / yang-publish（清除） | yang-publish / yang-status | 见下方"in_progress_session 子结构" |
+
+#### `in_progress_session` 子结构
+
+```json
+{
+  "type": "prediction",
+  "file": "predictions/2026-05-04_a3f2c1d4e5b6_停止期待.md",
+  "started_at": "2026-05-04T14:00:00+08:00",
+  "rubric_version": "v2"
+}
+```
+
+`type`：当前只有 `"prediction"`。未来可能加 `"bump"` 表示长流程 bump 在进行中。
+
+---
+
+## 读写协议
+
+### 读（任何 skill）
+
+```python
+# 伪代码
+import json, os
+
+state_path = os.path.join(os.getcwd(), ".yang-state.json")
+if not os.path.exists(state_path):
+    # 不存在 = 用户没初始化，路由到 /yang-init
+    raise NeedsInitError()
+
+with open(state_path) as f:
+    state = json.load(f)
+
+# 检查 schema_version 兼容
+LATEST_SCHEMA = "1.1"  # see migrations/registry.md
+if state.get("schema_version") != LATEST_SCHEMA:
+    # 不直接 raise — 提示用户跑 /yang-migrate（非阻塞）
+    log_warning(f"schema 版本不匹配：state={state.get('schema_version')}, 期望={LATEST_SCHEMA}。建议跑 /yang-migrate")
+    # MINOR mismatch 通常仍能继续；MAJOR 时部分字段读取可能 KeyError → 用 .get(field, default) 兜底
+```
+
+**关键纪律**：
+- 读完不立刻关心字段缺失——用 `state.get(field, default)` 容错。新版 skill 引入新字段时旧 state file 会缺该字段，应优雅默认而非崩溃
+- **绝不**在内存里 mutate state 后忘记写回——下游 skill 读到的是磁盘版
+
+### 写（任何 skill）
+
+```python
+# 伪代码 — read-modify-write 模式
+state = read_state()
+state["calibration_samples"] += 1
+state["last_retro_at"] = now_iso()
+write_state(state)
+
+def write_state(state):
+    state_path = os.path.join(os.getcwd(), ".yang-state.json")
+    tmp_path = state_path + ".tmp"
+    with open(tmp_path, "w") as f:
+        json.dump(state, f, indent=2, ensure_ascii=False)
+    os.replace(tmp_path, state_path)  # atomic rename
+```
+
+**关键纪律**：
+- **原子写**：写到 .tmp → rename。避免半写损坏的 state file
+- **永远 indent=2**：人类可读，便于用户手改 + git diff
+- **ensure_ascii=False**：保留中文字符不转 \uXXXX
+- **写完再继续后续操作**：避免下游 skill 读到旧值
+
+### 并发模型
+
+预期场景：**单用户 + 单 Claude Code 会话**。不做锁。
+
+如果两个会话并行操作同一个项目（罕见且不推荐）：可能出现写覆盖。**未来需要时**可加文件锁（`fcntl.flock`）；当前不加，避免引入复杂度。
+
+---
+
+## 字段写入责任表（防止"谁该写这个字段"歧义）
+
+| 字段 | 唯一写入者 | 何时写 |
+|---|---|---|
+| `rubric_version` | yang-init / yang-bump | init 写初值；bump 升版 |
+| `baseline_plays` | yang-init / yang-retro / yang-bump (--bucket-only) | init 时若有 adapter 抓回历史→中位数；无历史→null；retro 第 1 篇有实绩→回填；bump --bucket-only→重新计算 |
+| `calibration_samples` | yang-retro | 每次复盘成功落盘 +1 |
+| `pending_retros` | yang-publish（push）/ yang-retro（remove） | publish 时 push 本次；retro 完成时 remove |
+| `consecutive_directional_errors` | yang-retro（push）/ yang-bump（清空） | retro 判定偏差方向时 push；bump 落地时清空 |
+| `in_progress_session` | yang-predict（创建）/ yang-publish（清除） | predict 写完文件时创建；publish 登记时清除 |
+| `last_bump_at` | yang-bump | bump 落地时 |
+
+**绝不允许**多个 skill 写同一字段——会导致状态语义破碎。如果未来需要新字段，先想好"谁是唯一写者"。
+
+---
+
+## state file 损坏 / 不一致的处理
+
+| 症状 | 处理 |
+|---|---|
+| 文件不存在 | 提示"未初始化，请跑 /yang-init"，**不**自动创建 |
+| JSON 解析失败 | 提示"state file 损坏：path/to/.yang-state.json"，建议手动修复或备份 + 重新 init |
+| schema_version 不识别 | 提示版本号 + 建议跑 [/yang-migrate](../skills/yang-migrate/SKILL.md)。SessionStart hook 会自动检测并提示 |
+| `pending_retros` 含已删除的文件 | yang-status 检测时安静移除，不报错 |
+| `in_progress_session` 文件已不存在 | yang-status 检测到 → 询问用户是否清理 |
+| `calibration_samples` 与 `predictions/` 实际复盘数不一致 | yang-status 报告差异。临时手改 state 即可；持续不一致是 bug，应在下个 minor 版本里加入 yang-migrate 的 reconciliation step |
+
+---
+
+## 与 git 的关系
+
+`.yang-state.json` **应该**被纳入 git：
+- ✅ 它是项目配置 + 累计指标的快照
+- ✅ git history 提供状态演化的完整轨迹
+- ✅ 多设备同步靠 git push/pull
+- ❌ **不**含敏感信息（cookie / API key 应放 `.env` 或 `.yang-secrets.json`，单独 gitignore）
+
+`.yang-cache/` 目录**不应该**被纳入 git：
+- 含 `usage.jsonl`（meta-logging 钩子的本地日志）
+- 含 `trends-history.jsonl`（trend 抓取的去重缓存）
+- 这些是设备本地状态，跨设备同步无意义
+
+`/yang-init` 应自动在用户项目根追加（不覆盖）`.gitignore`：
+
+```
+.yang-cache/
+.yang-secrets.json
+```
+
+---
+
+## 升级路径
+
+完整哲学和 maintainer checklist 详见 [migration-protocol.md](migration-protocol.md)。简版：
+
+未来 schema 变化时：
+1. bump `schema_version`（如 "1.1" → "1.2"）
+2. 写 `migrations/<old>-to-<new>.md`（4 段：WHAT/WHY/HOW/Manual fallback）
+3. 改 `migrations/registry.md` 的 `LATEST_SCHEMA` 标记位 + 版本链表
+4. SessionStart hook 检测到不一致时自动提示用户跑 `/yang-migrate`
+5. **绝不**让 skill 静默兼容旧版 schema 的删字段或重命名——那会让"哪个版本下哪个字段是什么含义"成谜
+
+新增字段（MINOR，不破坏兼容）：
+- 用 `state.get(field, default)` 读
+- 老 state file 自动获得 default
+- **仍需 bump schema_version + 写 migrations 文件**——保证状态文件最终一致；但用户可以延迟跑 migrate
+
+删除 / 重命名 / 改语义（MAJOR，破坏兼容）：
+- 必须 bump schema_version + 写迁移文件
+- CHANGELOG 标 `BREAKING`
+
+---
+
+## 用户手改 state file 的边界
+
+允许手改的字段：
+- `enabled_trend_sources`（数组，决定 yang-trends 用哪些源）
+- `data_collection`（切换 manual ↔ adapter）
+
+**不**建议手改的字段（会破坏不变量）：
+- `calibration_samples` / `pending_retros` / `consecutive_directional_errors`（应通过 retro 流程更新）
+- `rubric_version`（应通过 bump 流程更新）
+- `in_progress_session`（应通过 predict/publish 流程更新）
+
+如用户确实想重置：建议**删除整个 .yang-state.json + 重跑 /yang-init**——这比手改单字段安全。
+
+---
+
+## Confidence label 派生表（**单一真值**）
+
+被 yang-predict / yang-status / yang-recommend / SessionStart hook 等共同使用。从 `calibration_samples` 派生，所有 skill 用同一逻辑：
+
+| `calibration_samples` | confidence emoji + 标签 | 数值含义 | 用户该如何用 |
+|---|---|---|---|
+| 0 | 🔴 极低 | "占星级别，纯纪律训练" | 不要基于 composite 决定要不要发；写 prediction 是为了**采集数据**，不是为了**做决策** |
+| 1-2 | 🟠 低 | "中枢 ±50%，方向感优于绝对数字" | 信"A 比 B 流量好"的方向，不信具体数字 |
+| 3-5 | 🟡 偏低 | "中枢 ±40%，可作为参考之一" | bucket 排序可用，中枢点估计仍是猜测 |
+| 6-10 | 🟢 中 | "中枢 ±25%，可参与决策" | 可作为"要不要发"的依据之一 |
+| 11-20 | 🟢 较高 | "中枢 ±15%，rubric 形态稳定" | 可信中枢估计 |
+| 21+ | 🔵 高 | "中枢 ±10%，可数据驱动 bump" | 进入数据驱动阶段 — bump 用回归而非直觉 |
+
+> 上表的 ±X% 是**经验值**（基于参考博主的真实校准曲线），不是数学严格保证。新人账号的真实 ±X% 要等自己跑出 score-curve.png 才能验证。
+
+**不要用这个表来 gating 任何功能**——所有 skill 在所有 calibration_samples 下都跑相同流程，只是输出里**显示**当前 confidence 等级。这是新设计的核心原则。
+
+---
+
+## 字段变更日志模板
+
+每次 `.yang-state.json` 的字段发生变更（新增、删除、重命名、改语义），必须在 `migrations/` 目录下记录变更日志。以下为标准模板：
+
+```markdown
+# 字段变更日志 — [schema_version 变更，如 1.4 → 1.5]
+
+**变更日期**：YYYY-MM-DD
+**触发者**：[yang-init / yang-migrate / yang-bump / 手动]
+**兼容性**：MINOR（兼容）/ MAJOR（破坏兼容）
+
+---
+
+## 变更内容
+
+### 新增字段
+
+| 字段名 | 类型 | 默认值 | 写入者 | 读取者 | 语义说明 |
+|-------|------|-------|-------|-------|---------|
+| `new_field` | type | default | writer | reader | 说明 |
+
+### 删除字段
+
+| 字段名 | 原类型 | 原语义 | 删除理由 | 替代方案 |
+|-------|-------|-------|---------|---------|
+| `old_field` | type | 语义 | 理由 | 替代 |
+
+### 重命名字段
+
+| 旧字段名 | 新字段名 | 语义是否变化 | 变化说明 |
+|---------|---------|------------|---------|
+| `old_name` | `new_name` | 是/否 | 说明 |
+
+### 语义变更（字段名不变）
+
+| 字段名 | 旧语义 | 新语义 | 变更理由 |
+|-------|-------|-------|---------|
+| `field` | 旧含义 | 新含义 | 理由 |
+
+---
+
+## 迁移步骤
+
+1. [具体迁移操作步骤]
+2. [...]
+
+## 回退方案
+
+- [如何回退到变更前的状态]
+
+## 影响范围
+
+- 受影响的子skill：[skill1, skill2, ...]
+- 受影响的共享协议：[protocol1, protocol2, ...]
+```
+
+### 变更日志存放规则
+
+| 规则 | 说明 |
+|------|------|
+| 文件命名 | `migrations/<old_version>-to-<new_version>.md`（如 `1.4-to-1.5.md`） |
+| 版本链表 | `migrations/registry.md` 中维护完整的版本升级链 |
+| 不可修改 | 已发布的变更日志不可修改（如需修正，追加勘误段） |
+| 必须同步 | 字段变更落地时，变更日志必须同时创建 |
+
+---
+
+## 状态文件损坏恢复流程
+
+当 `.yang-state.json` 出现损坏时，按以下流程恢复：
+
+### 恢复流程图
+
+```
+检测到损坏
+  │
+  ├─ 损坏类型判定
+  │    ├─ JSON 解析失败（文件内容损坏）
+  │    ├─ schema_version 不识别（版本异常）
+  │    ├─ 关键字段缺失（部分损坏）
+  │    └─ 文件不存在（误删）
+  │
+  ├─ Step 1: 备份损坏文件
+  │    └─ cp .yang-state.json .yang-state.json.corrupted.<timestamp>
+  │
+  ├─ Step 2: 尝试自动恢复
+  │    ├─ 从 git history 恢复最近一次有效版本
+  │    │    └─ git show HEAD:.yang-state.json > .yang-state.json
+  │    └─ 如果 git 无历史 → 进入 Step 3
+  │
+  ├─ Step 3: 构建最小可用 state
+  │    └─ 使用以下模板 + 扫描项目文件推断字段值
+  │
+  ├─ Step 4: 字段值推断规则
+  │    ├─ schema_version → "1.4"（当前最新）
+  │    ├─ calibration_samples → 扫描 predictions/ 目录中已复盘文件数
+  │    ├─ rubric_version → 读取 rubric_notes.md 头部版本标记
+  │    ├─ benchmark_status → 检查 benchmark.md 是否存在
+  │    ├─ pending_retros → 扫描 predictions/ 中未复盘的文件
+  │    ├─ shoots → 扫描 shoots/ 目录
+  │    ├─ last_*_at 时间戳 → 取对应文件的 mtime
+  │    └─ 其他字段 → 使用默认值
+  │
+  ├─ Step 5: 用户确认
+  │    └─ 展示推断结果，请用户确认或修正
+  │
+  └─ Step 6: 写入恢复后的 state
+       └─ 原子写入（.tmp → rename）
+```
+
+### 最小可用 state 模板
+
+```json
+{
+  "schema_version": "1.4",
+  "skill_version": "1.0.0",
+  "rubric_version": "v0",
+  "content_form": "opinion-video",
+  "typical_duration_seconds": 240,
+  "target_publish_cadence_days": 2,
+  "rubric_form_mismatch": false,
+  "benchmark_status": "none",
+  "benchmark_name": null,
+  "benchmark_sample_count": 0,
+  "baseline_plays": null,
+  "calibration_samples": 0,
+  "calibration_samples_at_last_bump": 0,
+  "data_collection": "manual",
+  "pool_status": "none",
+  "data_layer": "markdown",
+  "hooks_installed": false,
+  "enabled_trend_sources": ["manual-paste"],
+  "enabled_perf_adapters": [],
+  "last_bump_at": null,
+  "last_bump_self_audited": false,
+  "last_published_at": null,
+  "last_published_file": null,
+  "last_retro_at": null,
+  "last_trends_run_at": null,
+  "last_trends_added_count": 0,
+  "last_prediction_self_scored": false,
+  "last_self_scored_at": null,
+  "consecutive_directional_errors": [],
+  "pending_retros": [],
+  "shoots": [],
+  "in_progress_session": null,
+  "initialized_at": "<恢复时的时间戳>",
+  "_recovered_at": "<恢复时间戳>",
+  "_recovery_note": "从损坏文件自动恢复，部分字段为推断值"
+}
+```
+
+### 恢复后验证清单
+
+| 验证项 | 验证方法 | 预期结果 |
+|-------|---------|---------|
+| JSON 可解析 | `json.load()` | 无异常 |
+| schema_version 合法 | 与 `LATEST_SCHEMA` 对比 | 版本号可识别 |
+| calibration_samples 一致 | 与 `predictions/` 目录文件数对比 | 偏差 ≤ 1 |
+| pending_retros 路径有效 | 逐条检查文件存在性 | 所有路径指向存在的文件 |
+| shoots 路径有效 | 逐条检查目录存在性 | 所有路径指向存在的目录 |
+| in_progress_session | 检查是否为 null | 恢复后必须为 null |
+
+---
+
+## 并发访问状态锁机制
+
+### 设计原则
+
+当前主要场景为**单用户 + 单 Claude Code 会话**，但为防止以下边缘情况，引入轻量级状态锁：
+
+1. 用户在两个终端同时操作同一项目
+2. SessionStart hook 与用户主动调用 skill 并发
+3. yang-doctor 诊断与正常 skill 运行并发
+
+### 锁机制定义
+
+#### 锁类型
+
+| 锁类型 | 锁字段 | 获取条件 | 持有时长 | 超时 |
+|-------|-------|---------|---------|------|
+| **排他锁（X-Lock）** | `in_progress_session` | 该字段为 null 时可获取 | 单次 skill 运行期间 | 30 分钟 |
+| **共享锁（S-Lock）** | 无（只读不锁） | 始终可获取 | 瞬时读取 | 无 |
+
+#### 锁获取流程
+
+```
+skill 开始执行
+  │
+  ├─ Step 1: 读取 .yang-state.json
+  │    └─ 检查 in_progress_session
+  │         ├─ null → 可获取排他锁
+  │         └─ 非 null → 检查是否超时
+  │              ├─ 未超时 → 拒绝执行，提示"skill {name} 正在运行中"
+  │              └─ 已超时 → 执行异常退出降级（见 §6），然后获取锁
+  │
+  ├─ Step 2: 获取锁
+  │    └─ 写入 in_progress_session = {skill, started_at, session_id}
+  │         └─ 原子写入（.tmp → rename）
+  │
+  ├─ Step 3: 执行 skill 逻辑
+  │
+  ├─ Step 4: 释放锁
+  │    └─ 正常完成：更新 last_*_file + 清除 in_progress_session
+  │    └─ 异常退出：仅清除 in_progress_session（见 §6）
+  │
+  └─ Step 5: 原子写入最终 state
+```
+
+#### 锁超时判定
+
+```python
+import datetime
+
+LOCK_TIMEOUT_MINUTES = 30
+
+def is_lock_expired(session):
+    """判定锁是否超时"""
+    if session is None:
+        return False
+    started_at = datetime.datetime.fromisoformat(session["started_at"])
+    now = datetime.datetime.now(started_at.tzinfo)
+    elapsed = (now - started_at).total_seconds() / 60
+    return elapsed > LOCK_TIMEOUT_MINUTES
+```
+
+#### 并发冲突解决矩阵
+
+| 场景 | 冲突方 A | 冲突方 B | 解决策略 |
+|------|---------|---------|---------|
+| 两个 skill 同时请求排他锁 | 先到者 | 后到者 | 后到者等待并重试（最多 3 次，间隔 10 秒） |
+| 只读操作与排他锁冲突 | 只读 skill | 写入 skill | 只读操作读取上次已落盘的 state 快照，不阻塞 |
+| SessionStart hook 与 skill 冲突 | hook | skill | hook 只读，不冲突 |
+| yang-doctor 与 skill 冲突 | doctor | skill | doctor 只读 + 诊断，不冲突；但 doctor 修复操作需获取排他锁 |
+
+#### 锁等待重试策略
+
+```
+重试策略（后到者）：
+  第 1 次重试：等待 10 秒
+  第 2 次重试：等待 20 秒
+  第 3 次重试：等待 30 秒
+  3 次均失败 → 向用户报告"skill {name} 长时间占用状态锁，建议手动检查"
+```
+
+#### 死锁预防
+
+- **单锁设计**：整个系统只有一把排他锁（`in_progress_session`），不存在多锁循环等待
+- **强制超时**：30 分钟超时自动释放，防止永久死锁
+- **异常退出保护**：崩溃后下次读取时自动清理残留锁（见 §6）

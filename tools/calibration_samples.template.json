@@ -1,0 +1,23 @@
+{
+  "_comment": "作者: 阿洋",
+  "calibration_samples": [
+    {
+      "script": "完整脚本文本示例",
+      "graded_scores": {
+        "hook": { "value": 7, "justification": "开篇钩子明确" },
+        "emotion": { "value": 6, "justification": "中段情绪有起伏" },
+        "structure": { "value": 8, "justification": "递进式结构清晰" },
+        "copywriting": { "value": 7, "justification": "语言有传播力" },
+        "persona": { "value": 8, "justification": "人设鲜明统一" },
+        "virality": { "value": 6, "justification": "共鸣点明确" },
+        "rhythm": { "value": 7, "justification": "节奏张弛有度" }
+      },
+      "actual_plays": 85000,
+      "bucket": "A",
+      "scored_by": "3judge-v1",
+      "scored_at": "2026-05-15T10:00:00"
+    }
+  ],
+  "rubric_context": "当前rubric内容...",
+  "knowledge_base_context": "相关知识库内容..."
+}

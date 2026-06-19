@@ -1,0 +1,20 @@
+name: Skill Repo Check
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master, develop]
+
+jobs:
+  skill-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Make check script executable
+        run: chmod +x scripts/check-skill-repo.sh
+
+      - name: Run skill repo check
+        run: bash scripts/check-skill-repo.sh

@@ -1,0 +1,36 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+
+# Shell scripts
+*.sh text eol=lf
+
+# PowerShell scripts
+*.ps1 text
+
+# Python
+*.py text
+
+# Markdown
+*.md text eol=lf
+
+# JSON
+*.json text
+
+# YAML
+*.yml text
+*.yaml text
+
+# SQL
+*.sql text
+
+# Binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.mp4 binary
+*.mp3 binary
+*.wav binary
+*.zip binary
+*.tar.gz binary

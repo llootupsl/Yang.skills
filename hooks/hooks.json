@@ -1,0 +1,51 @@
+{
+  "_comment": "作者: 阿洋",
+  "version": "1.0.0",
+  "_runtime_compat_notes": {
+    "_overview": "以下每个 hook 的 _compat 字段说明其在非 Claude Code runtime 中的等价实现方式。详见 shared-protocols/runtime-compat.md",
+    "claude_code": "原生支持 .claude/hooks/ 目录，hooks.json + .sh 脚本直接生效",
+    "codex_cli": "通过 codex.yaml 的 hooks.on_start / hooks.post_tool_call 配置等价回调，command 字段指向对应 .sh 脚本路径",
+    "opencode": "通过 skill 配置的 callbacks.on_load / callbacks.after_action 注册等价回调，run 字段指向对应 .sh 脚本路径",
+    "openclaw": "通过 claw 配置订阅 on_file_written / on_session_init / on_skill_complete 等事件，触发对应 .sh 脚本",
+    "cursor": "不支持自动 hooks，需用户在终端手动执行对应 .sh 脚本",
+    "github_copilot": "不支持自动 hooks，需用户在 VS Code 终端手动执行对应 .sh 脚本"
+  },
+  "hooks": {
+    "bump-trigger-monitor": {
+      "path": "./hooks/bump-trigger-monitor.sh",
+      "trigger": "on_retro_complete",
+      "description": "每次复盘后检查是否达到 Bump 阈值并提示用户",
+      "_compat": {
+        "codex_cli": "在 codex.yaml 的 hooks.post_tool_call 中配置，match.tool='Skill' 且 match.name='yang-retro'，command 指向本脚本",
+        "opencode": "在 skill 配置的 callbacks.after_action 中配置，match.action='skill_call' 且 match.skill='yang-retro'，run 指向本脚本",
+        "openclaw": "在 claw 配置中订阅 on_skill_complete 事件，skill 名匹配 'yang-retro'，触发本脚本",
+        "cursor": "用户在终端手动执行: bash .claude/hooks/bump-trigger-monitor.sh",
+        "github_copilot": "用户在 VS Code 终端手动执行: bash .claude/hooks/bump-trigger-monitor.sh"
+      }
+    },
+    "prediction-immutability": {
+      "path": "./hooks/prediction-immutability.sh",
+      "trigger": "on_prediction_write",
+      "description": "预测写入时计算并记录内容 hash，后续检测非法修改",
+      "_compat": {
+        "codex_cli": "在 codex.yaml 的 hooks.post_tool_call 中配置，match.tool='Write' 且 match.path_pattern='predictions/.*'，command 指向本脚本",
+        "opencode": "在 skill 配置的 callbacks.after_action 中配置，match.action='write' 且 match.path='predictions/**'，run 指向本脚本",
+        "openclaw": "在 claw 配置中订阅 on_file_written 事件，路径匹配 'predictions/'，触发本脚本",
+        "cursor": "用户在每次写预测后手动执行: bash .claude/hooks/prediction-immutability.sh <prediction_file_path>",
+        "github_copilot": "用户在每次写预测后手动执行: bash .claude/hooks/prediction-immutability.sh <prediction_file_path>"
+      }
+    },
+    "session-start": {
+      "path": "./hooks/session-start.sh",
+      "trigger": "on_session_start",
+      "description": "会话启动时检查环境状态、更新看板",
+      "_compat": {
+        "codex_cli": "在 codex.yaml 的 hooks.on_start 中配置，command 指向本脚本",
+        "opencode": "在 skill 配置的 callbacks.on_load 中配置，run 指向本脚本",
+        "openclaw": "在 claw 配置中订阅 on_session_init 事件，触发本脚本",
+        "cursor": "用户在会话开始时手动执行: bash .claude/hooks/session-start.sh",
+        "github_copilot": "用户在会话开始时手动执行: bash .claude/hooks/session-start.sh"
+      }
+    }
+  }
+}

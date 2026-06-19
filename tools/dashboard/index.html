@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Yang.skills Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
+        .dashboard-container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+        .header { text-align: center; padding: 24px 0; border-bottom: 1px solid #1e293b; margin-bottom: 24px; }
+        .header h1 { font-size: 28px; font-weight: 700; color: #38bdf8; }
+        .header .last-updated { font-size: 13px; color: #64748b; margin-top: 6px; display: block; }
+        .grid-2x2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .grid-1x2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px; }
+        .panel { background: #1e293b; border-radius: 12px; padding: 20px; border: 1px solid #334155; min-height: 380px; position: relative; }
+        .panel h3 { font-size: 15px; color: #94a3b8; margin-bottom: 12px; font-weight: 500; }
+        .panel .chart { width: 100%; height: 340px; }
+        .panel .empty-state { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #475569; font-size: 14px; text-align: center; }
+        @media (max-width: 768px) { .grid-2x2 { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+    <div class="dashboard-container">
+        <div class="header">
+            <h1>Yang.skills Dashboard</h1>
+            <span class="last-updated" id="last-updated">最后更新: --</span>
+        </div>
+        <div class="grid-2x2">
+            <div class="panel" id="chart-prediction-accuracy">
+                <h3>预测精度收敛曲线</h3>
+                <div class="chart" id="chart-prediction-accuracy-inner"></div>
+                <div class="empty-state" id="empty-prediction">暂无数据</div>
+            </div>
+            <div class="panel" id="chart-bucket-sunburst">
+                <h3>Bucket 分布</h3>
+                <div class="chart" id="chart-bucket-sunburst-inner"></div>
+                <div class="empty-state" id="empty-bucket">暂无数据</div>
+            </div>
+            <div class="panel" id="chart-competitor-radar">
+                <h3>对标 7 维雷达图</h3>
+                <div class="chart" id="chart-competitor-radar-inner"></div>
+                <div class="empty-state" id="empty-radar">暂无数据</div>
+            </div>
+            <div class="panel" id="chart-topic-heatmap">
+                <h3>选题赛道 × 角度 热力图</h3>
+                <div class="chart" id="chart-topic-heatmap-inner"></div>
+                <div class="empty-state" id="empty-heatmap">暂无数据</div>
+            </div>
+        </div>
+        <div class="grid-1x2">
+            <div class="panel" id="chart-competitor-platforms">
+                <h3>竞品平台分布</h3>
+                <div class="chart" id="chart-competitor-platforms-inner"></div>
+                <div class="empty-state" id="empty-competitor-platforms">暂无竞品数据<br>运行 <code>yang-competitor-search</code> 开始发现竞品</div>
+            </div>
+            <div class="panel" id="chart-strategy-timeline">
+                <h3>策略变化时间线</h3>
+                <div class="chart" id="chart-strategy-timeline-inner"></div>
+                <div class="empty-state" id="empty-strategy-timeline">暂无策略变化记录</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Load data.json
+        fetch('data.json')
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('last-updated').textContent = '最后更新: ' + (data.meta?.generated_at || '--');
+                renderPredictionAccuracy(data);
+                renderBucketSunburst(data);
+                renderCompetitorRadar(data);
+                renderTopicHeatmap(data);
+                renderCompetitorPlatforms(data);
+                renderStrategyTimeline(data);
+            })
+            .catch(error => {
+                console.error('Failed to load data:', error);
+            });
+
+        function renderPredictionAccuracy(data) {
+            const accuracy = data.prediction_accuracy || [];
+            if (accuracy.length === 0) return;
+            document.getElementById('empty-prediction').style.display = 'none';
+            
+            const chart = echarts.init(document.getElementById('chart-prediction-accuracy-inner'));
+            const option = {
+                tooltip: { trigger: 'axis' },
+                xAxis: { type: 'category', data: accuracy.map(d => d.date || d.sample_id), axisLabel: { color: '#94a3b8' } },
+                yAxis: { type: 'value', name: '偏差', axisLabel: { color: '#94a3b8' } },
+                series: [{
+                    name: '预测偏差',
+                    type: 'line',
+                    data: accuracy.map(d => d.deviation),
+                    smooth: true,
+                    lineStyle: { color: '#38bdf8', width: 2 },
+                    itemStyle: { color: '#38bdf8' },
+                    markLine: { data: [{ yAxis: 0, name: '命中线', lineStyle: { color: '#22c55e', type: 'dashed' } }], silent: true }
+                }],
+                grid: { top: 20, right: 20, bottom: 40, left: 50 }
+            };
+            chart.setOption(option);
+            window.addEventListener('resize', () => chart.resize());
+        }
+
+        function renderBucketSunburst(data) {
+            const distribution = data.bucket_distribution || [];
+            if (distribution.length === 0) return;
+            document.getElementById('empty-bucket').style.display = 'none';
+            
+            const chart = echarts.init(document.getElementById('chart-bucket-sunburst-inner'));
+            const sunburstData = distribution.map(d => ({
+                name: `Bucket ${d.bucket}`,
+                value: d.actual_count || d.predicted_count || 0,
+                itemStyle: {
+                    color: d.bucket === 'A' ? '#22c55e' : d.bucket === 'B' ? '#3b82f6' : d.bucket === 'C' ? '#f59e0b' : '#ef4444'
+                }
+            }));
+            
+            const option = {
+                tooltip: { trigger: 'item' },
+                series: [{
+                    type: 'sunburst',
+                    data: [{ name: '总量', children: sunburstData }],
+                    radius: [0, '90%'],
+                    label: { rotate: 'radial', color: '#e2e8f0' },
+                    itemStyle: { borderColor: '#0f172a', borderWidth: 2 }
+                }]
+            };
+            chart.setOption(option);
+            window.addEventListener('resize', () => chart.resize());
+        }
+
+        function renderCompetitorRadar(data) {
+            const radar = data.competitor_radar || [];
+            if (radar.length === 0) return;
+            document.getElementById('empty-radar').style.display = 'none';
+            
+            const chart = echarts.init(document.getElementById('chart-competitor-radar-inner'));
+            const indicators = [
+                { name: '钩子力', max: 10 },
+                { name: '情绪力', max: 10 },
+                { name: '结构力', max: 10 },
+                { name: '文案力', max: 10 },
+                { name: '人设力', max: 10 },
+                { name: '传播力', max: 10 },
+                { name: '节奏力', max: 10 }
+            ];
+            
+            const colors = ['#38bdf8', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6'];
+            const option = {
+                tooltip: {},
+                legend: { data: radar.map(r => r.name), textStyle: { color: '#94a3b8' }, top: 0 },
+                radar: { indicator: indicators, center: ['50%', '55%'], radius: '65%', axisName: { color: '#94a3b8' } },
+                series: [{
+                    type: 'radar',
+                    data: radar.map((r, i) => ({
+                        name: r.name,
+                        value: [r.hook, r.emotion, r.structure, r.copywriting, r.persona, r.virality, r.rhythm],
+                        lineStyle: { color: colors[i % colors.length] },
+                        areaStyle: { color: colors[i % colors.length], opacity: 0.1 }
+                    }))
+                }]
+            };
+            chart.setOption(option);
+            window.addEventListener('resize', () => chart.resize());
+        }
+
+        function renderTopicHeatmap(data) {
+            const heatmap = data.topic_heatmap || [];
+            if (heatmap.length === 0) return;
+            document.getElementById('empty-heatmap').style.display = 'none';
+            
+            const chart = echarts.init(document.getElementById('chart-topic-heatmap-inner'));
+            const tracks = [...new Set(heatmap.map(h => h.track))];
+            const angles = [...new Set(heatmap.map(h => h.angle))];
+            
+            const maxFreq = Math.max(...heatmap.map(h => h.frequency || 0), 1);
+            const seriesData = heatmap.map((h, i) => [
+                tracks.indexOf(h.track),
+                angles.indexOf(h.angle),
+                h.frequency || 0
+            ]);
+            
+            const option = {
+                tooltip: { position: 'top' },
+                grid: { top: 10, right: 20, bottom: 60, left: 80 },
+                xAxis: { type: 'category', data: tracks, axisLabel: { color: '#94a3b8', rotate: 30 } },
+                yAxis: { type: 'category', data: angles, axisLabel: { color: '#94a3b8' } },
+                visualMap: { min: 0, max: maxFreq, calculable: true, orient: 'horizontal', left: 'center', bottom: 10, textStyle: { color: '#94a3b8' } },
+                series: [{
+                    name: '频次',
+                    type: 'heatmap',
+                    data: seriesData,
+                    label: { show: true, color: '#e2e8f0' },
+                    emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0, 0, 0, 0.5)' } }
+                }]
+            };
+            chart.setOption(option);
+            window.addEventListener('resize', () => chart.resize());
+        }
+
+        function renderCompetitorPlatforms(data) {
+            const competitors = data.competitors || {};
+            const byPlatform = competitors.by_platform || {};
+            const platforms = Object.keys(byPlatform);
+            if (platforms.length === 0) return;
+            document.getElementById('empty-competitor-platforms').style.display = 'none';
+
+            const chart = echarts.init(document.getElementById('chart-competitor-platforms-inner'));
+            const option = {
+                tooltip: { trigger: 'axis' },
+                grid: { top: 20, right: 20, bottom: 60, left: 60 },
+                xAxis: {
+                    type: 'category',
+                    data: platforms,
+                    axisLabel: { color: '#94a3b8' }
+                },
+                yAxis: {
+                    type: 'value',
+                    name: '竞品数',
+                    axisLabel: { color: '#94a3b8' },
+                    minInterval: 1
+                },
+                series: [{
+                    type: 'bar',
+                    data: platforms.map(p => ({
+                        value: byPlatform[p],
+                        itemStyle: {
+                            color: p === 'douyin' ? '#ef4444' :
+                                   p === 'bilibili' ? '#38bdf8' :
+                                   p === 'xiaohongshu' ? '#f59e0b' :
+                                   p === 'kuaishou' ? '#22c55e' :
+                                   p === 'weibo' ? '#ef4444' :
+                                   '#8b5cf6'
+                        }
+                    })),
+                    barWidth: '50%',
+                    label: { show: true, position: 'top', color: '#e2e8f0' }
+                }]
+            };
+            chart.setOption(option);
+            window.addEventListener('resize', () => chart.resize());
+        }
+
+        function renderStrategyTimeline(data) {
+            const changes = data.strategy_changes || [];
+            if (changes.length === 0) return;
+            document.getElementById('empty-strategy-timeline').style.display = 'none';
+
+            const changeTypeNames = {
+                'hook_type_shift': '钩子类型迁移',
+                'duration_trend': '时长趋势',
+                'topic_shift': '选题偏移',
+                'style_change': '风格变化',
+                'frequency_change': '更新频率',
+                'persona_drift': '人设漂移',
+                'engagement_drop': '互动骤降',
+                'engagement_spike': '互动飙升'
+            };
+
+            const chart = echarts.init(document.getElementById('chart-strategy-timeline-inner'));
+            const seriesData = changes.map(c => ({
+                name: c.competitor_name + ': ' + (changeTypeNames[c.change_type] || c.change_type),
+                value: [c.detected_at || '', c.competitor_name, c.change_type, c.before || '?', c.after || '?']
+            }));
+
+            const option = {
+                tooltip: {
+                    trigger: 'item',
+                    formatter: function(params) {
+                        var v = params.data.value;
+                        return '<strong>' + v[1] + '</strong><br>' +
+                               '变化: ' + (changeTypeNames[v[2]] || v[2]) + '<br>' +
+                               '前: ' + v[3] + '<br>' +
+                               '后: ' + v[4] + '<br>' +
+                               '时间: ' + v[0];
+                    }
+                },
+                grid: { top: 20, right: 30, bottom: 40, left: 120 },
+                xAxis: {
+                    type: 'time',
+                    name: '检测时间',
+                    axisLabel: { color: '#94a3b8', rotate: 30 }
+                },
+                yAxis: {
+                    type: 'category',
+                    data: [...new Set(changes.map(c => c.competitor_name))],
+                    axisLabel: { color: '#94a3b8' }
+                },
+                series: [{
+                    type: 'scatter',
+                    data: changes.map(c => {
+                        var platformColors = {
+                            'douyin': '#ef4444', 'bilibili': '#38bdf8',
+                            'xiaohongshu': '#f59e0b', 'kuaishou': '#22c55e',
+                            'weibo': '#ef4444'
+                        };
+                        return {
+                            name: c.competitor_name,
+                            value: [c.detected_at || '', c.competitor_name],
+                            symbolSize: 14,
+                            itemStyle: {
+                                color: platformColors[c.platform] || '#8b5cf6'
+                            }
+                        };
+                    }),
+                    emphasis: {
+                        itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.5)' }
+                    }
+                }]
+            };
+            chart.setOption(option);
+            window.addEventListener('resize', () => chart.resize());
+        }
+    </script>
+</body>
+</html>

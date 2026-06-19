@@ -1,0 +1,50 @@
+{
+  "name": "Yang.skills",
+  "description": "全能内容创作运营超级Skills包——把内容创作变成可校准的预测循环",
+  "version": "6.0.0",
+  "author": "阿洋",
+  "skills": [
+    {
+      "name": "yang-init",
+      "description": "初始化项目"
+    },
+    {
+      "name": "yang-score",
+      "description": "7维度评分系统"
+    },
+    {
+      "name": "yang-predict",
+      "description": "盲预测引擎"
+    },
+    {
+      "name": "yang-polish",
+      "description": "活人感润色引擎"
+    },
+    {
+      "name": "yang-retro",
+      "description": "数据回收与复盘"
+    },
+    {
+      "name": "yang-bump",
+      "description": "Rubric升级"
+    },
+    {
+      "name": "yang-seed",
+      "description": "四通道选题启动器"
+    },
+    {
+      "name": "yang-trends",
+      "description": "零配置多源热点聚合"
+    },
+    {
+      "name": "yang-publish",
+      "description": "发布元数据登记"
+    },
+    {
+      "name": "yang-shoot",
+      "description": "登记拍摄"
+    }
+  ],
+  "repository": "https://github.com/LearnPrompt/Yang.skills",
+  "license": "MIT"
+}
