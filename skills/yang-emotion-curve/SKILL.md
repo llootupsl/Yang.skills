@@ -275,6 +275,36 @@ ER-Curve 唤醒值序列: +2.5 → +3.0 → ...
 
 ---
 
+## 知识库联动
+
+作者: 阿洋
+
+本 skill 与以下知识库文件形成正向联动（详见 [`knowledge/_linkage-map.md`](../../knowledge/_linkage-map.md) 通道 4：情绪曲线联动）：
+
+- `knowledge/ansir/emotion-system.md`：情绪刺点理论（骨架六种推进方式、情绪刺点理论、点赞/评论/收藏/分享/关注五大刺点），作为情绪曲线分析的**核心理论框架**
+- `knowledge/ansir/advanced-insights.md`：进阶洞察（BGM声音设计、进阶问答、To B vs To C策略），作为情绪曲线分析的**进阶应用补充**
+
+### 联动方式
+
+将 `ansir/emotion-system.md` 的情绪刺点理论（骨架六种推进方式、情绪刺点理论、点赞/评论/收藏/分享/关注五大刺点）作为情绪曲线分析的**核心理论框架**，指导Step 3情绪标注和Step 5节奏分析中的情绪密度、动态范围、峰值位置判断；将 `ansir/advanced-insights.md` 的BGM声音设计、进阶问答、To B vs To C策略作为情绪曲线分析的**进阶应用补充**，增强情绪曲线与BGM节奏的协同分析能力。两者组合形成"刺点理论 + 声音设计 + 进阶应用"的情绪分析体系。
+
+### 联动时机
+
+1. 用户请求情绪曲线分析时（触发词：情绪曲线/emotion curve/分析节奏/情绪分析/节奏设计）
+2. Step 3"情绪标注"时，加载 `emotion-system.md` 的五大刺点理论指导标注
+3. Step 5"节奏分析"时，加载 `advanced-insights.md` 的BGM声音设计增强节奏分析
+4. 知识库A降级时，情绪刺点理论不可用，降级为通用ER-Curve框架（正负唤醒度7级标注）
+
+### 降级策略
+
+| 降级场景 | 降级行为 |
+|---------|---------|
+| `ansir/emotion-system.md` 缺失 | 情绪刺点理论不可用，五大互动词典不可用，降级为通用ER-Curve框架 |
+| `ansir/advanced-insights.md` 缺失 | BGM声音设计不可用，情绪曲线与BGM的协同分析降级为通用节奏判断 |
+| 两者全部缺失 | 情绪曲线分析完全依赖通用ER-Curve框架，标注"A-占位（通用ER-Curve替代）" |
+
+---
+
 ## 错误处理
 
 | 场景 | 行为 |

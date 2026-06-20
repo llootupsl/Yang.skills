@@ -1,6 +1,6 @@
 ---
 name: Yang.skills
-version: 6.0.0
+version: 7.0.0
 description: 全能内容创作运营超级Skills包。融合知识库A、知识库B、知识库C三大运营知识体系，提供搜索意图研究→选题→打分→活人感量化评分润色→盲预测→发布→复盘→进化rubric的全闭环内容创作工作流。方法论文本形态通用：视频/文章/播客/Newsletter/短文。首次使用必须先跑 /yang-init。兼容 Claude Code、Codex CLI、OpenCode、OpenClaw 等 Agent runtime。不要用于从零创建一个新Skill、不要用于普通的代码review、不要用于与内容创作运营无关的任务。
 argument-hint: "[draft-path] [--mode: cold-start|calibration]"
 allowed-tools: Bash(*), Read, Write, Edit, Grep, Glob, Skill

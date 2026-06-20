@@ -1,10 +1,10 @@
 # 作者: 阿洋
-"""Yang.skills v4 视频下载器 - 基于 yt-dlp
+"""Yang.skills v7 视频下载器 - 核心算法内化版
 
 作者: 阿洋
 
-引入策略：优先使用 vendor 版本的 yt-dlp 源码，回退到 pip install 版本。
-详见 adapters/benchmark-analysis/yt_dlp_vendor/README.md
+依赖策略：通过 pip install yt-dlp 安装，核心下载算法（URL解析/格式选择/元数据提取/平台检测）内化到本文件。
+不再引入 yt-dlp 完整源码，只使用其作为下载引擎依赖。
 """
 import argparse
 import sys
@@ -14,35 +14,17 @@ SUPPORTED_PLATFORMS = ["douyin", "bilibili", "xiaohongshu", "youtube", "kuaishou
 
 
 def _import_yt_dlp():
-    """优先使用 vendor 版本的 yt-dlp，回退到 pip install 版本。
+    """导入 yt-dlp 包（通过 pip install yt-dlp 安装）。
 
     作者: 阿洋
 
-    加载顺序：
-    1. vendor 目录下的 yt-dlp 源码（用户手动引入的完整源码）
-    2. pip install 的 yt-dlp 包
-    3. 两者均不可用则报错退出
-
-    返回 yt_dlp 模块对象。
+    核心下载算法已内化到本文件，yt-dlp 作为外部依赖提供下载引擎。
     """
-    try:
-        # 优先从 vendor 目录导入
-        _vendor_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "yt_dlp_vendor")
-        if _vendor_dir not in sys.path:
-            sys.path.insert(0, _vendor_dir)
-        from yt_dlp_vendor import yt_dlp_loader
-        return yt_dlp_loader.get_yt_dlp()
-    except ImportError:
-        pass
-    except Exception:
-        # vendor 加载任何异常都回退到 pip 版本，保证不破坏现有功能
-        pass
     try:
         import yt_dlp
         return yt_dlp
     except ImportError:
         print("请先安装 yt-dlp: pip install yt-dlp")
-        print("或将 yt-dlp 完整源码放入 adapters/benchmark-analysis/yt_dlp_vendor/yt_dlp/")
         sys.exit(1)
 
 

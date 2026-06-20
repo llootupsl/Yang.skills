@@ -406,3 +406,35 @@ KuaiMod 劣质内容检测: [N项标记 / 无标记]
     - 评分范围：1.0-4.0（回归任务设计）
 
 **许可证保留声明**：引入的开源项目源码理念已保留原始许可证声明（KuaiMod CC BY-SA 4.0 / VideoScore MIT License），详见 `tools/content_quality_evaluator.py` 文件头部。
+
+---
+
+## 知识库联动
+
+作者: 阿洋
+
+本 skill 与以下知识库文件形成正向联动（详见 [`knowledge/_linkage-map.md`](../../knowledge/_linkage-map.md) 通道 2：评分框架联动）：
+
+- `knowledge/ansir/practice-sop.md`：评分框架（11项刻意练习作业、核心术语速查表、自查清单、常见误区、创作流程SOP），作为评分的**通用框架基础**
+- `knowledge/ansir/advanced-insights.md`：进阶洞察（BGM声音设计、从0到1起号流程、进阶问答、To B vs To C策略、心态建设、底层哲学、跨界思维），作为评分的**进阶维度补充**
+- `knowledge/xuehui/industry-matrix.md`：行业配比矩阵（各行业内容配比矩阵、起号方法全流程、知识点索引），作为评分的**行业基准参考**
+
+### 联动方式
+
+将 `ansir/practice-sop.md` 的评分框架作为评分的**通用框架基础**，提供评分维度的术语对照和自查标准；将 `ansir/advanced-insights.md` 的进阶洞察作为评分的**进阶维度补充**，增强评分锚定的深度；将 `xuehui/industry-matrix.md` 的行业配比矩阵作为评分的**行业基准参考**，使评分能结合具体行业特点给出差异化判断。三者交叉形成"通用评分框架 + 进阶维度 + 行业基准"的三维评分体系。
+
+### 联动时机
+
+1. 用户请求单稿评分时（触发词：打分这篇/score this/评估这篇/评分/评估内容）
+2. Step 2"知识检索与评分准备"时，加载3个评分相关子文件
+3. Step 3"调用 Channel B 执行 3-Judge 评分"时，3个文件的内容作为评分锚定的参考知识
+4. 知识库A降级时，`practice-sop.md` 和 `advanced-insights.md` 不可用，评分锚定降级为B/C混合
+
+### 降级策略
+
+| 降级场景 | 降级行为 |
+|---------|---------|
+| `ansir/practice-sop.md` 缺失 | 通用评分框架不可用，评分锚定降级为B的八大爆款元素和C的开篇36计 |
+| `ansir/advanced-insights.md` 缺失 | 进阶维度补充不可用，评分深度降低，标注"进阶维度降级" |
+| `xuehui/industry-matrix.md` 缺失 | 行业基准参考不可用，评分无法结合行业特点，标注"行业基准降级" |
+| 三者全部缺失 | 评分完全依赖 rubric_notes.md 自身规则，无知识库增强 |
